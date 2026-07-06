@@ -1,0 +1,12 @@
+{
+  "name": "ga-app",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "api:dev": "npm run dev --workspace apps/api",
+    "mobile:start": "npm run start --workspace apps/mobile"
+  }
+}

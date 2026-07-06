@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)",
+      "Bash(git init *)",
+      "Bash(npx --yes create-expo-app@latest . --template blank-typescript)",
+      "Bash(npx expo *)",
+      "Bash(npm install *)",
+      "Bash(npx prisma *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)"
+    ]
+  }
+}

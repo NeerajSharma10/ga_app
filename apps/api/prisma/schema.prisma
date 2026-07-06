@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum GameCategory {
+  CONSOLE
+  TABLE
+  BOARD
+  COIN
+}
+
+enum StationStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+}
+
+enum PaymentType {
+  CASH
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+}
+
+enum DiscountType {
+  PERCENT
+  AMOUNT
+}
+
+// Staff accounts. Indian mobile number is the login identifier.
+model User {
+  id           Int       @id @default(autoincrement())
+  name         String
+  phone        String    @unique @db.VarChar(10) // Indian mobile: 10 digits, validated in API layer
+  email        String?   @unique
+  passwordHash String
+  role         Role
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  sessions     Session[] @relation("LoggedBy")
+}
+
+// "PS5", "PS3", "Pool", "Foosball", "Board Games", "Coin Games" ...
+model GameType {
+  id                  Int            @id @default(autoincrement())
+  name                String         @unique
+  category            GameCategory
+  extraControllerPrice Decimal?      @db.Decimal(10, 2)
+  active              Boolean        @default(true)
+  stations            Station[]
+  priceTiers          PriceTier[]
+  coinPackages        CoinPackage[]
+}
+
+// Duration -> price rows, e.g. PS3: 30min = 40, 60min = 100
+model PriceTier {
+  id              Int      @id @default(autoincrement())
+  gameTypeId      Int
+  gameType        GameType @relation(fields: [gameTypeId], references: [id])
+  durationMinutes Int
+  price           Decimal  @db.Decimal(10, 2)
+
+  @@unique([gameTypeId, durationMinutes])
+}
+
+// Coin games are bought in quantity packs, not time: 6/12/20 coins
+model CoinPackage {
+  id         Int      @id @default(autoincrement())
+  gameTypeId Int
+  gameType   GameType @relation(fields: [gameTypeId], references: [id])
+  quantity   Int
+  price      Decimal  @db.Decimal(10, 2)
+
+  @@unique([gameTypeId, quantity])
+}
+
+// A physical unit of a GameType, e.g. "PS5 - Unit 1"
+model Station {
+  id         Int           @id @default(autoincrement())
+  label      String
+  gameTypeId Int
+  gameType   GameType      @relation(fields: [gameTypeId], references: [id])
+  status     StationStatus @default(AVAILABLE)
+  sessions   Session[]
+
+  @@index([gameTypeId])
+}
+
+// Every customer is identified by their Indian mobile number.
+model Customer {
+  id                    Int       @id @default(autoincrement())
+  name                  String
+  phone                 String    @unique @db.VarChar(10) // Indian mobile: 10 digits, validated in API layer
+  address               String?
+  isMember              Boolean   @default(false)
+  memberDiscountPercent Decimal?  @db.Decimal(5, 2)
+  createdAt             DateTime  @default(now())
+  sessions              Session[]
+}
+
+// The core transaction: one customer, one station, one visit.
+model Session {
+  id               Int            @id @default(autoincrement())
+  stationId        Int
+  station          Station        @relation(fields: [stationId], references: [id])
+  customerId       Int
+  customer         Customer       @relation(fields: [customerId], references: [id])
+  loggedByUserId   Int
+  loggedByUser     User           @relation("LoggedBy", fields: [loggedByUserId], references: [id])
+
+  startTime        DateTime       @default(now())
+  endTime          DateTime?
+  durationMinutes  Int?
+
+  extraControllers Int            @default(0)
+
+  baseAmount       Decimal        @db.Decimal(10, 2) // from PriceTier/prorated calc, staff-editable
+  discountType     DiscountType?
+  discountValue    Decimal?       @db.Decimal(10, 2)
+  discountReason   String?
+  totalAmount      Decimal?       @db.Decimal(10, 2) // locked in at session end
+
+  paymentType      PaymentType?
+  paymentStatus    PaymentStatus  @default(PENDING)
+  notes            String?
+  createdAt        DateTime       @default(now())
+
+  @@index([stationId, startTime])
+  @@index([customerId])
+}
