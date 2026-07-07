@@ -10,7 +10,10 @@
       "Bash(npx tsx *)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(node /tmp/test-readline.mjs)",
-      "Bash(gh auth *)"
+      "Bash(gh auth *)",
+      "WebSearch",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

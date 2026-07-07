@@ -34,7 +34,8 @@ Keep this handy — you'll paste it twice (Render, and once locally for setup).
 2. Configure it exactly like this (monorepo, so build from the repo root, not `apps/api`):
    - **Root Directory**: leave blank
    - **Runtime**: Node
-   - **Build Command**: `npm install && npm run build --workspace apps/api`
+   - **Build Command**: `npm install && npm run prisma:generate --workspace apps/api && npm run build --workspace apps/api`
+     (the explicit `prisma:generate` step matters - in a monorepo, Prisma's usual auto-generate-on-install doesn't reliably find the schema, and `tsc` will fail with "no exported member 'GameType'" etc. without it)
    - **Start Command**: `npm run prisma:deploy --workspace apps/api && npm run start --workspace apps/api`
    - **Instance Type**: Free
 3. Add environment variables (Render dashboard → Environment):

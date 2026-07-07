@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.njcoder.gaapp",
       "adaptiveIcon": {
         "backgroundColor": "#0A0D16",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -23,6 +24,11 @@
     },
     "plugins": [
       "expo-sharing"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "038ef5f5-d1f1-4d2c-b292-b64e1697cbca"
+      }
+    }
   }
 }
