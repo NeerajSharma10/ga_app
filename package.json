@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "api:dev": "npm run dev --workspace apps/api",
-    "mobile:start": "npm run start --workspace apps/mobile"
+    "mobile:start": "npm run start --workspace apps/mobile",
+    "postinstall": "npm run build --workspace packages/shared-types"
   }
 }

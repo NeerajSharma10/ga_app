@@ -1,6 +1,6 @@
 # Deploying to production
 
-Accounts you'll need (all free to start): GitHub, [Render](https://render.com), your Aiven MySQL service, and [Expo](https://expo.dev) (for building the Android app).
+Accounts you'll need (all free to start): GitHub, a [Google Cloud](https://console.cloud.google.com) project with billing enabled (Cloud Run's free tier needs a billing account on file even though it won't charge you at this scale), your Aiven MySQL service, and [Expo](https://expo.dev) (for building the Android app).
 
 ## A. Push the code to GitHub
 
@@ -28,23 +28,34 @@ mysql://avnadmin:PASSWORD@your-service.aivencloud.com:PORT/defaultdb?ssl-mode=RE
 
 Keep this handy — you'll paste it twice (Render, and once locally for setup).
 
-## C. Deploy the API on Render (free tier)
+## C. Deploy the API on Google Cloud Run
 
-1. Render dashboard → **New** → **Web Service** → connect your GitHub repo
-2. Configure it exactly like this (monorepo, so build from the repo root, not `apps/api`):
-   - **Root Directory**: leave blank
-   - **Runtime**: Node
-   - **Build Command**: `npm install && npm run prisma:generate --workspace apps/api && npm run build --workspace apps/api`
-     (the explicit `prisma:generate` step matters - in a monorepo, Prisma's usual auto-generate-on-install doesn't reliably find the schema, and `tsc` will fail with "no exported member 'GameType'" etc. without it)
-   - **Start Command**: `npm run prisma:deploy --workspace apps/api && npm run start --workspace apps/api`
-   - **Instance Type**: Free
-3. Add environment variables (Render dashboard → Environment):
-   - `DATABASE_URL` → your Aiven Service URI from step B
-   - `JWT_SECRET` → generate one locally: `openssl rand -hex 32`, paste the output
-   - (leave `PORT` alone — Render sets this automatically and the app already reads it)
-4. Deploy. First build takes a few minutes. Note the public URL Render gives you, e.g. `https://ga-app-api.onrender.com` — this also runs `prisma migrate deploy` on every start, so your schema stays in sync automatically on future deploys.
+Cloud Run's free tier (2M requests/month) comfortably covers this app's traffic, and cold starts are much faster than Render's (~1-3s vs ~30-50s). Easiest via **Google Cloud Shell** (console.cloud.google.com → the `>_` icon, top right) — it has `gcloud` and `docker` preinstalled and already logged in, so nothing to install locally. Clone your repo there first: `git clone https://github.com/<you>/ga_app.git && cd ga_app`.
 
-**Free tier tradeoff**: it sleeps after 15 minutes of no traffic and takes ~30-50s to wake on the next request. Fine for a staff tool used during business hours.
+```bash
+# One-time setup
+gcloud config set project YOUR_PROJECT_ID
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com
+gcloud artifacts repositories create ga-app --repository-format=docker --location=us-central1
+gcloud auth configure-docker us-central1-docker.pkg.dev
+```
+
+```bash
+# Build and deploy (run from the repo root - the Dockerfile needs the whole
+# monorepo as build context, since apps/api depends on packages/shared-types)
+docker build -f apps/api/Dockerfile -t us-central1-docker.pkg.dev/YOUR_PROJECT_ID/ga-app/api:latest .
+docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/ga-app/api:latest
+
+gcloud run deploy ga-app-api \
+  --image us-central1-docker.pkg.dev/YOUR_PROJECT_ID/ga-app/api:latest \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars DATABASE_URL="<your Aiven Service URI>",JWT_SECRET="<output of: openssl rand -hex 32>"
+```
+
+This prints your service URL when done, e.g. `https://ga-app-api-xxxxx.us-central1.run.app`. The container runs `prisma migrate deploy` on every start (see `apps/api/Dockerfile`'s `CMD`), so schema changes apply automatically on future deploys too.
+
+**Future updates**: rerun the `docker build` / `docker push` / `gcloud run deploy` three commands above — there's no git-push auto-deploy like Render had, since Cloud Run doesn't watch your repo directly. (A Cloud Build trigger can add that later if it becomes annoying — ask if you want it set up.)
 
 ## D. Seed production data and create your real login
 
@@ -65,10 +76,10 @@ If this hangs or times out, check Aiven console → your service → whether IP-
 
 ```bash
 cd apps/mobile
-echo 'EXPO_PUBLIC_API_URL=https://ga-app-api.onrender.com' > .env
+echo 'EXPO_PUBLIC_API_URL=https://ga-app-api-xxxxx.us-central1.run.app' > .env
 ```
 
-(use your actual Render URL from step C)
+(use your actual Cloud Run URL from step C)
 
 ## F. Build the Android APK
 
@@ -95,12 +106,12 @@ This builds in Expo's cloud (~10-15 min) and prints a download link for a `.apk`
 
 ## H. Making future changes
 
-- **API changes**: `git push` to `main` → Render redeploys automatically, including any new migrations.
+- **API changes**: rerun the `docker build` / `docker push` / `gcloud run deploy` sequence from step C.
 - **Mobile app changes**: rebuild with `eas build --platform android --profile preview` again and redistribute the new APK link.
 
 ## Production hygiene checklist
 
-- [ ] `JWT_SECRET` on Render is a fresh random value, not the local dev one
+- [ ] `JWT_SECRET` on Cloud Run is a fresh random value, not the local dev one
 - [ ] Logged in with your real `create-admin` account, not `admin123`
 - [ ] Aiven connection uses `ssl-mode=REQUIRED` (already in the Service URI)
 - [ ] `.env` files are gitignored (already set up) — never commit real secrets
