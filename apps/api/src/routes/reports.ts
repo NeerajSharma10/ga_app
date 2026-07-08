@@ -42,6 +42,67 @@ export async function reportRoutes(fastify: FastifyInstance) {
       byStaff: toRows(byStaff),
     };
   });
+
+  // One row per completed session for a given day - "which customer played
+  // which game for how much" - downloadable as a spreadsheet.
+  fastify.get("/reports/sessions.csv", { preHandler: [authenticate, requireRole("SUPER_ADMIN")] }, async (request, reply) => {
+    const { date } = request.query as { date?: string };
+    const day = date ?? new Date().toISOString().slice(0, 10);
+    const dayStart = new Date(`${day}T00:00:00`);
+    const dayEnd = new Date(`${day}T23:59:59.999`);
+
+    const sessions = await prisma.session.findMany({
+      where: { startTime: { gte: dayStart, lte: dayEnd } },
+      include: {
+        station: { include: { gameType: true } },
+        customer: true,
+        loggedByUser: { select: { name: true } },
+      },
+      orderBy: { startTime: "asc" },
+    });
+
+    const header = [
+      "Date",
+      "Time",
+      "Customer Name",
+      "Customer Phone",
+      "Game",
+      "Station",
+      "Duration (min)",
+      "Amount (INR)",
+      "Payment Method",
+      "Payment Status",
+      "Staff",
+    ];
+
+    const rows = sessions.map((s) => [
+      s.startTime.toISOString().slice(0, 10),
+      s.startTime.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+      s.customer.name,
+      s.customer.phone,
+      s.station.gameType.name,
+      s.station.label,
+      s.durationMinutes ?? "",
+      Number(s.totalAmount ?? s.baseAmount),
+      s.paymentType ?? "",
+      s.paymentStatus,
+      s.loggedByUser.name,
+    ]);
+
+    const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\r\n");
+
+    reply.header("Content-Type", "text/csv");
+    reply.header("Content-Disposition", `attachment; filename="sessions-${day}.csv"`);
+    return reply.send(csv);
+  });
+}
+
+function csvEscape(value: string | number): string {
+  const str = String(value);
+  if (/[",\r\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
 }
 
 function bump(map: Map<string, { sessionCount: number; totalRevenue: number }>, key: string, amount: number) {

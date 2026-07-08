@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, ApiError } from "../lib/api";
+import { downloadFile } from "../lib/download-file";
 import { colors, radius, spacing, typography } from "../theme";
 import { Card } from "../components/Card";
+import { TextField } from "../components/TextField";
+import { Button } from "../components/Button";
 
 interface RevenueRow {
   key: string;
@@ -19,11 +23,31 @@ interface RevenueReport {
   byStaff: RevenueRow[];
 }
 
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function ReportsScreen() {
   const { data } = useQuery({
     queryKey: ["reports", "revenue"],
     queryFn: () => api.get<RevenueReport>("/reports/revenue"),
   });
+
+  const [exportDate, setExportDate] = useState(todayIso());
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+
+  async function handleExport() {
+    setExportError("");
+    setExporting(true);
+    try {
+      await downloadFile(`/reports/sessions.csv?date=${exportDate}`, `sessions-${exportDate}.csv`, "text/csv");
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : "Could not download report");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ gap: spacing.lg, paddingBottom: spacing.xxl }}>
@@ -44,6 +68,14 @@ export function ReportsScreen() {
       <ReportSection title="By game" rows={data?.byGameType} />
       <ReportSection title="By staff" rows={data?.byStaff} />
       <ReportSection title="By day" rows={data?.byDay} />
+
+      <Card style={{ gap: spacing.md }}>
+        <Text style={styles.sectionTitle}>Export day's sessions</Text>
+        <Text style={styles.label}>Every session that day — customer, game, duration, amount, payment method.</Text>
+        <TextField label="Date (YYYY-MM-DD)" value={exportDate} onChangeText={setExportDate} placeholder={todayIso()} />
+        {exportError ? <Text style={styles.error}>{exportError}</Text> : null}
+        <Button title="Download CSV" onPress={handleExport} loading={exporting} />
+      </Card>
     </ScrollView>
   );
 }
@@ -81,4 +113,5 @@ const styles = StyleSheet.create({
   rowValue: { color: colors.textDim, fontSize: 12, fontVariant: ["tabular-nums"] },
   barTrack: { height: 6, backgroundColor: colors.panelAlt, borderRadius: 3, overflow: "hidden" },
   barFill: { height: 6, backgroundColor: colors.accent, borderRadius: 3 },
+  error: { color: colors.maintenance, fontSize: 12 },
 });
