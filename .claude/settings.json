@@ -13,7 +13,14 @@
       "Bash(gh auth *)",
       "WebSearch",
       "Bash(npm install *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}, time: %{time_total}s\\\\n\" --max-time 60 https://ga-app-5y7o.onrender.com/health)",
+      "Bash(nslookup ga-app-5y7o.onrender.com)",
+      "Bash(host ga-app-5y7o.onrender.com)",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}, time: %{time_total}s\\\\n\" --max-time 90 https://ga-app-5y7o.onrender.com/health)"
     ]
   }
 }
