@@ -13,6 +13,17 @@ import { userRoutes } from "./routes/users.js";
 
 const fastify = Fastify({ logger: true });
 
+// Every route handler already sends its own {error} response for expected
+// failures (validation, auth, not found) instead of throwing - so anything
+// that reaches this handler is unexpected (e.g. the database being
+// unreachable). Log the real details server-side, but don't leak internals
+// like DB hostnames to the client. Registered before any routes, since
+// Fastify resolves each route's error handler at registration time.
+fastify.setErrorHandler((error, _request, reply) => {
+  fastify.log.error(error);
+  reply.code(500).send({ error: "Something went wrong. Please try again." });
+});
+
 await fastify.register(cors, { origin: true });
 await fastify.register(jwt, { secret: process.env.JWT_SECRET ?? "dev-secret-change-me" });
 

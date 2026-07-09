@@ -53,9 +53,21 @@ gcloud run deploy ga-app-api \
   --set-env-vars DATABASE_URL="<your Aiven Service URI>",JWT_SECRET="<output of: openssl rand -hex 32>"
 ```
 
-This prints your service URL when done, e.g. `https://ga-app-api-xxxxx.us-central1.run.app`. The container runs `prisma migrate deploy` on every start (see `apps/api/Dockerfile`'s `CMD`), so schema changes apply automatically on future deploys too.
+This prints your service URL when done, e.g. `https://ga-app-api-xxxxx.us-central1.run.app`.
+
+**Important**: the container does **not** run migrations automatically on startup - see "Applying schema changes" below for why, and run that step whenever you change `schema.prisma`.
 
 **Future updates**: rerun the `docker build` / `docker push` / `gcloud run deploy` three commands above — there's no git-push auto-deploy like Render had, since Cloud Run doesn't watch your repo directly. (A Cloud Build trigger can add that later if it becomes annoying — ask if you want it set up.)
+
+### Applying schema changes
+
+Cloud Run scales to zero when idle, so every cold start boots a fresh container. If that boot required a successful database connection (e.g. to check for pending migrations), a single transient DNS/network blip from the database provider would take down the **entire service** - including endpoints that never touch the database - until a cold start happened to land when the database was reachable again. So migrations are a deliberate, separate, manual step instead of part of every startup:
+
+```bash
+DATABASE_URL="<your Aiven Service URI>" npm run prisma:deploy --workspace apps/api
+```
+
+Run this once after `gcloud run deploy`, and again any time you change `schema.prisma` and redeploy - not on every deploy.
 
 ## D. Seed production data and create your real login
 

@@ -25,4 +25,11 @@ ENV NODE_ENV=production
 # server already reads process.env.PORT, so nothing else to configure here.
 EXPOSE 8080
 
-CMD ["sh", "-c", "npm run prisma:deploy --workspace apps/api && npm run start --workspace apps/api"]
+# Deliberately does NOT run `prisma migrate deploy` here. Cloud Run scales to
+# zero when idle, so every cold start would otherwise require a fresh,
+# successful database connection just to boot - one transient DNS/network
+# blip from the DB provider would then take down the ENTIRE service,
+# including endpoints like /health that never touch the database at all.
+# Run migrations explicitly instead (see DEPLOY.md) whenever the schema
+# actually changes, not on every single startup.
+CMD ["npm", "run", "start", "--workspace", "apps/api"]
