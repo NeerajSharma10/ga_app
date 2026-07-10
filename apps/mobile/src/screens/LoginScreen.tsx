@@ -3,9 +3,10 @@ import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from "react-na
 import type { LoginRequest, LoginResponse } from "@ga-app/shared-types";
 import { api, ApiError } from "../lib/api";
 import { useAuthStore } from "../lib/auth-store";
-import { colors, spacing, typography } from "../theme";
+import { colors, radius, spacing, typography } from "../theme";
 import { TextField } from "../components/TextField";
 import { Button } from "../components/Button";
+import { Card } from "../components/Card";
 
 export function LoginScreen() {
   const [phone, setPhone] = useState("");
@@ -30,12 +31,14 @@ export function LoginScreen() {
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <View style={styles.brand}>
-        <Text style={styles.brandMark}>GA</Text>
+        <View style={styles.brandBadge}>
+          <Text style={styles.brandMark}>GA</Text>
+        </View>
         <Text style={styles.title}>Gamer's Academy</Text>
         <Text style={styles.subtitle}>Play · Train · Repeat</Text>
       </View>
 
-      <View style={styles.form}>
+      <Card style={styles.form}>
         <TextField
           label="Mobile number"
           value={phone}
@@ -53,16 +56,27 @@ export function LoginScreen() {
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Button title="Log in" onPress={handleLogin} loading={loading} />
-      </View>
+      </Card>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, justifyContent: "center", padding: spacing.xl, gap: spacing.xxl },
-  brand: { alignItems: "center", gap: spacing.xs },
+  brand: { alignItems: "center", gap: spacing.sm },
+  brandBadge: {
+    width: 68,
+    height: 68,
+    borderRadius: radius.lg + 10,
+    backgroundColor: `${colors.accent}22`,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.xs,
+  },
   brandMark: {
-    fontSize: 34,
+    fontSize: 26,
     fontWeight: "800",
     color: colors.accent,
     letterSpacing: 1,

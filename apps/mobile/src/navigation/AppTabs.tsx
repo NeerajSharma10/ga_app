@@ -1,6 +1,6 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import type {
   DashboardStackParamList,
   SessionsStackParamList,
@@ -79,8 +79,24 @@ function AdminStackScreen() {
   );
 }
 
+type IoniconName = keyof typeof Ionicons.glyphMap;
+
+const TAB_ICONS: Record<string, [IoniconName, IoniconName]> = {
+  Stations: ["grid", "grid-outline"],
+  Active: ["flash", "flash-outline"],
+  History: ["time", "time-outline"],
+  Customers: ["people", "people-outline"],
+  Owner: ["settings", "settings-outline"],
+};
+
 function tabIcon(label: string) {
-  return { tabBarLabel: label, tabBarIcon: () => <Text>{label[0]}</Text> };
+  const [filled, outline] = TAB_ICONS[label];
+  return {
+    tabBarLabel: label,
+    tabBarIcon: ({ focused, color, size }: { focused: boolean; color: string; size: number }) => (
+      <Ionicons name={focused ? filled : outline} size={size} color={color} />
+    ),
+  };
 }
 
 export function AppTabs() {

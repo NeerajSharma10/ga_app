@@ -17,6 +17,15 @@ export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 
 export const radius = { sm: 8, md: 10, lg: 14 };
 
+// Cross-platform elevation - shadow* is read on iOS/web, elevation on Android.
+export const shadow = {
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.28,
+  shadowRadius: 10,
+  elevation: 4,
+};
+
 export const typography = {
   h1: { fontSize: 26, fontWeight: "700" as const },
   h2: { fontSize: 19, fontWeight: "700" as const },
