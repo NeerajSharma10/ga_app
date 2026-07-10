@@ -20,12 +20,19 @@ const membershipSchema = z.object({
 
 export async function customerRoutes(fastify: FastifyInstance) {
   // Every customer is looked up by their mobile number - this is the primary
-  // "does this customer already exist" check staff does when starting a session.
+  // "does this customer already exist" check staff does when starting a
+  // session. A partial phone number returns every customer whose number
+  // starts with those digits (powers autocomplete as staff types); a full
+  // number naturally narrows to at most one match, since phone is unique.
   fastify.get("/customers", { preHandler: authenticate }, async (request, reply) => {
     const { phone } = request.query as { phone?: string };
     if (phone) {
-      const customer = await prisma.customer.findUnique({ where: { phone } });
-      return reply.send(customer ? [customer] : []);
+      const matches = await prisma.customer.findMany({
+        where: { phone: { startsWith: phone } },
+        orderBy: { name: "asc" },
+        take: 10,
+      });
+      return reply.send(matches);
     }
     return prisma.customer.findMany({ orderBy: { createdAt: "desc" }, take: 100 });
   });

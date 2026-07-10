@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { INDIA_PHONE_REGEX } from "@ga-app/shared-types";
 import type { StationDTO, CustomerDTO, SessionDTO, DiscountType } from "@ga-app/shared-types";
 import type { DashboardStackParamList } from "../navigation/types";
 import { api, ApiError } from "../lib/api";
@@ -27,6 +26,7 @@ export function StartSessionScreen({ route, navigation }: Props) {
 
   const [phone, setPhone] = useState("");
   const [customer, setCustomer] = useState<CustomerDTO | null>(null);
+  const [suggestions, setSuggestions] = useState<CustomerDTO[]>([]);
   const [newName, setNewName] = useState("");
   const [newAddress, setNewAddress] = useState("");
   const [lookupError, setLookupError] = useState("");
@@ -68,35 +68,44 @@ export function StartSessionScreen({ route, navigation }: Props) {
     });
   }, [station, resolvedBaseAmount, extraControllers, discountType, discountValue, customer]);
 
-  async function lookupPhone() {
-    setLookupError("");
-    if (!INDIA_PHONE_REGEX.test(phone)) return;
-    setLooking(true);
-    try {
-      const results = await api.get<CustomerDTO[]>(`/customers?phone=${phone}`);
-      setCustomer(results[0] ?? null);
-      if (!results[0]) {
-        setNewName("");
-        setNewAddress("");
-      }
-    } catch (err) {
-      setLookupError(err instanceof ApiError ? err.message : "Lookup failed");
-    } finally {
-      setLooking(false);
-    }
+  function selectCustomer(picked: CustomerDTO) {
+    setCustomer(picked);
+    setPhone(picked.phone);
+    setSuggestions([]);
   }
 
-  // Trigger the lookup the moment a valid 10-digit number is typed, rather
-  // than waiting for the field to blur - onEndEditing doesn't fire reliably
-  // on every platform, which was letting staff create duplicate customers
-  // for numbers that already existed.
+  // Autocomplete: search as soon as a few digits are typed (debounced),
+  // rather than waiting for a full 10-digit number - lets staff pick an
+  // existing customer without typing their whole number. A full number that
+  // matches exactly one customer auto-selects, same as before.
   useEffect(() => {
-    if (INDIA_PHONE_REGEX.test(phone)) {
-      lookupPhone();
-    } else {
-      setCustomer(null);
+    if (customer) {
+      setSuggestions([]);
+      return;
     }
-  }, [phone]);
+    if (phone.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    setLookupError("");
+    const timeout = setTimeout(async () => {
+      setLooking(true);
+      try {
+        const results = await api.get<CustomerDTO[]>(`/customers?phone=${phone}`);
+        const exact = results.find((c) => c.phone === phone);
+        if (phone.length === 10 && exact) {
+          selectCustomer(exact);
+        } else {
+          setSuggestions(results);
+        }
+      } catch (err) {
+        setLookupError(err instanceof ApiError ? err.message : "Lookup failed");
+      } finally {
+        setLooking(false);
+      }
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [phone, customer]);
 
   async function ensureCustomer(): Promise<CustomerDTO> {
     if (customer) return customer;
@@ -197,12 +206,25 @@ export function StartSessionScreen({ route, navigation }: Props) {
         <TextField
           label="Mobile number"
           value={phone}
-          onChangeText={setPhone}
+          onChangeText={(v) => {
+            setPhone(v);
+            if (customer && v !== customer.phone) setCustomer(null);
+          }}
           keyboardType="number-pad"
           maxLength={10}
           error={lookupError}
         />
         {looking ? <Text style={styles.label}>Looking up…</Text> : null}
+        {suggestions.length > 0 ? (
+          <View style={styles.suggestions}>
+            {suggestions.map((s) => (
+              <Pressable key={s.id} onPress={() => selectCustomer(s)} style={styles.suggestionRow}>
+                <Text style={styles.value}>{s.name}</Text>
+                <Text style={styles.label}>{s.phone}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         {customer ? (
           <View style={{ gap: spacing.xs }}>
             <Row label="Name" value={customer.name} />
@@ -307,4 +329,13 @@ const styles = StyleSheet.create({
   label: { color: colors.textDim, fontSize: 13 },
   value: { color: colors.text, fontSize: 14, fontWeight: "600" },
   error: { color: colors.maintenance, fontSize: 13, textAlign: "center" },
+  suggestions: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: "hidden" },
+  suggestionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
 });
