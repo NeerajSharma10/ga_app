@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, FlatList } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SessionDTO } from "@ga-app/shared-types";
 import { api, ApiError } from "../lib/api";
 import { previewSessionPrice } from "../lib/pricing-preview";
-import { playTone } from "../lib/play-tone";
-import { TONES, useNotificationStore } from "../lib/notification-store";
+import { playTonePreview, startRinging, stopRinging } from "../lib/play-tone";
+import { persistCustomTone } from "../lib/persist-custom-tone";
+import { BUILT_IN_TONES, useNotificationStore } from "../lib/notification-store";
 import { colors, radius, spacing, typography } from "../theme";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
@@ -34,9 +36,19 @@ export function ActiveSessionsScreen() {
   const [endingId, setEndingId] = useState<number | null>(null);
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [errorById, setErrorById] = useState<Record<number, string>>({});
+  const [toneError, setToneError] = useState("");
+  const [pickingTone, setPickingTone] = useState(false);
   const tone = useNotificationStore((s) => s.tone);
   const setTone = useNotificationStore((s) => s.setTone);
-  const notifiedIds = useRef<Set<number>>(new Set());
+  const customToneUri = useNotificationStore((s) => s.customToneUri);
+  const customToneName = useNotificationStore((s) => s.customToneName);
+  const setCustomTone = useNotificationStore((s) => s.setCustomTone);
+  // Gates the one-time startRinging() call per session - doesn't need to
+  // trigger re-renders, so a ref is fine.
+  const startedRingingIds = useRef<Set<number>>(new Set());
+  // Which time's-up sessions staff has silenced - drives the "Stop alert"
+  // button's visibility, so it has to be real state to re-render on toggle.
+  const [mutedIds, setMutedIds] = useState<Set<number>>(new Set());
 
   const { data: sessions, refetch } = useQuery({
     queryKey: ["sessions", "active"],
@@ -49,30 +61,57 @@ export function ActiveSessionsScreen() {
     return () => clearInterval(id);
   }, []);
 
-  // Play a tone the moment a session's booked duration is up (coin games
-  // have no fixed duration, so they never trigger this). Each session only
-  // notifies once, even as the timer keeps ticking past zero.
+  // Once a session's booked duration is up (coin games have no fixed
+  // duration, so they never trigger this), it rings on a loop until staff
+  // stops it or ends the session - a single chime is too easy to miss on a
+  // busy floor.
   useEffect(() => {
     if (!sessions) return;
     const stillActiveIds = new Set(sessions.map((s) => s.id));
-    for (const id of notifiedIds.current) {
-      if (!stillActiveIds.has(id)) notifiedIds.current.delete(id);
-    }
-    for (const session of sessions) {
-      if (!session.durationMinutes || notifiedIds.current.has(session.id)) continue;
-      const elapsedMin = (now - new Date(session.startTime).getTime()) / 60000;
-      if (elapsedMin >= session.durationMinutes) {
-        notifiedIds.current.add(session.id);
-        playTone(tone);
+    let droppedAny = false;
+    for (const id of startedRingingIds.current) {
+      if (!stillActiveIds.has(id)) {
+        stopRinging(id);
+        startedRingingIds.current.delete(id);
+        droppedAny = true;
       }
     }
-  }, [now, sessions, tone]);
+    if (droppedAny) {
+      setMutedIds((prev) => new Set([...prev].filter((id) => stillActiveIds.has(id))));
+    }
+    for (const session of sessions) {
+      if (!session.durationMinutes || startedRingingIds.current.has(session.id)) continue;
+      const elapsedMin = (now - new Date(session.startTime).getTime()) / 60000;
+      if (elapsedMin >= session.durationMinutes) {
+        startedRingingIds.current.add(session.id);
+        startRinging(session.id, tone, customToneUri);
+      }
+    }
+  }, [now, sessions, tone, customToneUri]);
+
+  async function pickCustomTone() {
+    setToneError("");
+    setPickingTone(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "audio/*" });
+      if (result.canceled || !result.assets?.[0]) return;
+      const file = result.assets[0];
+      const persistedUri = await persistCustomTone(file.uri, file.name);
+      setCustomTone(persistedUri, file.name);
+    } catch {
+      setToneError("Could not use that file");
+    } finally {
+      setPickingTone(false);
+    }
+  }
 
   async function finishSession(session: SessionDTO, paymentType?: "CASH" | "ONLINE") {
     setEndingId(session.id);
     setErrorById((prev) => ({ ...prev, [session.id]: "" }));
     try {
       await api.put(`/sessions/${session.id}/end`, paymentType ? { paymentType } : {});
+      stopRinging(session.id);
+      startedRingingIds.current.delete(session.id);
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["stations"] });
       setConfirmingId(null);
@@ -91,14 +130,22 @@ export function ActiveSessionsScreen() {
     <View style={styles.screen}>
       <Text style={styles.title}>Active sessions</Text>
 
-      <View style={styles.toneRow}>
+      <View style={styles.toneSection}>
         <Text style={styles.toneLabel}>Alert tone</Text>
-        <View style={{ flexDirection: "row", gap: spacing.sm, flex: 1, flexWrap: "wrap" }}>
-          {TONES.map((t) => (
+        <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+          {BUILT_IN_TONES.map((t) => (
             <Button key={t.id} title={t.label} variant={tone === t.id ? "primary" : "secondary"} onPress={() => setTone(t.id)} />
           ))}
-          <Button title="Test" variant="secondary" onPress={() => playTone(tone)} />
+          <Button
+            title={customToneName ? `Custom: ${customToneName}` : "Custom…"}
+            variant={tone === "custom" ? "primary" : "secondary"}
+            onPress={() => (customToneUri ? setTone("custom") : pickCustomTone())}
+            loading={pickingTone}
+          />
+          {customToneUri ? <Button title="Change" variant="secondary" onPress={pickCustomTone} loading={pickingTone} /> : null}
+          <Button title="Test" variant="secondary" onPress={() => playTonePreview(tone, customToneUri)} />
         </View>
+        {toneError ? <Text style={styles.error}>{toneError}</Text> : null}
       </View>
 
       <FlatList
@@ -112,6 +159,7 @@ export function ActiveSessionsScreen() {
           const isConfirming = confirmingId === item.id;
           const isPaid = item.paymentStatus === "PAID";
           const timeUp = !!item.durationMinutes && elapsedMin >= item.durationMinutes;
+          const isRinging = timeUp && !mutedIds.has(item.id);
           return (
             <Card style={{ gap: spacing.sm, borderRadius: radius.lg, borderColor: timeUp ? colors.maintenance : colors.border }}>
               <View style={styles.card}>
@@ -127,6 +175,16 @@ export function ActiveSessionsScreen() {
                     {item.durationMinutes ? ` / ${item.durationMinutes}m booked` : ""}
                   </Text>
                 </View>
+                {isRinging ? (
+                  <Button
+                    title="Stop alert"
+                    variant="secondary"
+                    onPress={() => {
+                      stopRinging(item.id);
+                      setMutedIds((prev) => new Set(prev).add(item.id));
+                    }}
+                  />
+                ) : null}
                 <Button title="End" variant="danger" onPress={() => setConfirmingId(item.id)} />
               </View>
               {isConfirming && isPaid ? (
@@ -173,7 +231,7 @@ export function ActiveSessionsScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, padding: spacing.xl },
   title: { ...typography.h1, color: colors.text, marginBottom: spacing.md },
-  toneRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.lg, flexWrap: "wrap" },
+  toneSection: { gap: spacing.sm, marginBottom: spacing.lg },
   toneLabel: { color: colors.textDim, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
   empty: { color: colors.textDim, textAlign: "center", marginTop: spacing.xxl },
   card: { flexDirection: "row", alignItems: "center", gap: spacing.md },
