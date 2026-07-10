@@ -13,6 +13,7 @@ export type HistoryStackParamList = {
 
 export type CustomersStackParamList = {
   Customers: undefined;
+  CustomerDetail: { customerId: number };
 };
 
 export type AdminStackParamList = {

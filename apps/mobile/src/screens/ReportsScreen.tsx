@@ -33,15 +33,18 @@ export function ReportsScreen() {
     queryFn: () => api.get<RevenueReport>("/reports/revenue"),
   });
 
-  const [exportDate, setExportDate] = useState(todayIso());
+  const [fromDate, setFromDate] = useState(todayIso());
+  const [toDate, setToDate] = useState(todayIso());
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
 
   async function handleExport() {
     setExportError("");
+    if (fromDate > toDate) return setExportError("Start date must be before end date");
     setExporting(true);
     try {
-      await downloadFile(`/reports/sessions.csv?date=${exportDate}`, `sessions-${exportDate}.csv`, "text/csv");
+      const suffix = fromDate === toDate ? fromDate : `${fromDate}_to_${toDate}`;
+      await downloadFile(`/reports/sessions.csv?from=${fromDate}&to=${toDate}`, `sessions-${suffix}.csv`, "text/csv");
     } catch (err) {
       setExportError(err instanceof ApiError ? err.message : "Could not download report");
     } finally {
@@ -70,9 +73,16 @@ export function ReportsScreen() {
       <ReportSection title="By day" rows={data?.byDay} />
 
       <Card style={{ gap: spacing.md }}>
-        <Text style={styles.sectionTitle}>Export day's sessions</Text>
-        <Text style={styles.label}>Every session that day — customer, game, duration, amount, payment method.</Text>
-        <TextField label="Date (YYYY-MM-DD)" value={exportDate} onChangeText={setExportDate} placeholder={todayIso()} />
+        <Text style={styles.sectionTitle}>Export sessions</Text>
+        <Text style={styles.label}>Every session in the range — customer, game, duration, amount, payment method.</Text>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <View style={{ flex: 1 }}>
+            <TextField label="Start date (YYYY-MM-DD)" value={fromDate} onChangeText={setFromDate} placeholder={todayIso()} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <TextField label="End date (YYYY-MM-DD)" value={toDate} onChangeText={setToDate} placeholder={todayIso()} />
+          </View>
+        </View>
         {exportError ? <Text style={styles.error}>{exportError}</Text> : null}
         <Button title="Download CSV" onPress={handleExport} loading={exporting} />
       </Card>

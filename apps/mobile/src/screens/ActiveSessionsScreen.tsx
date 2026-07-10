@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, FlatList } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SessionDTO } from "@ga-app/shared-types";
 import { api, ApiError } from "../lib/api";
 import { previewSessionPrice } from "../lib/pricing-preview";
+import { playTone } from "../lib/play-tone";
+import { TONES, useNotificationStore } from "../lib/notification-store";
 import { colors, radius, spacing, typography } from "../theme";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
@@ -32,6 +34,9 @@ export function ActiveSessionsScreen() {
   const [endingId, setEndingId] = useState<number | null>(null);
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [errorById, setErrorById] = useState<Record<number, string>>({});
+  const tone = useNotificationStore((s) => s.tone);
+  const setTone = useNotificationStore((s) => s.setTone);
+  const notifiedIds = useRef<Set<number>>(new Set());
 
   const { data: sessions, refetch } = useQuery({
     queryKey: ["sessions", "active"],
@@ -43,6 +48,25 @@ export function ActiveSessionsScreen() {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Play a tone the moment a session's booked duration is up (coin games
+  // have no fixed duration, so they never trigger this). Each session only
+  // notifies once, even as the timer keeps ticking past zero.
+  useEffect(() => {
+    if (!sessions) return;
+    const stillActiveIds = new Set(sessions.map((s) => s.id));
+    for (const id of notifiedIds.current) {
+      if (!stillActiveIds.has(id)) notifiedIds.current.delete(id);
+    }
+    for (const session of sessions) {
+      if (!session.durationMinutes || notifiedIds.current.has(session.id)) continue;
+      const elapsedMin = (now - new Date(session.startTime).getTime()) / 60000;
+      if (elapsedMin >= session.durationMinutes) {
+        notifiedIds.current.add(session.id);
+        playTone(tone);
+      }
+    }
+  }, [now, sessions, tone]);
 
   async function finishSession(session: SessionDTO, paymentType?: "CASH" | "ONLINE") {
     setEndingId(session.id);
@@ -66,6 +90,17 @@ export function ActiveSessionsScreen() {
   return (
     <View style={styles.screen}>
       <Text style={styles.title}>Active sessions</Text>
+
+      <View style={styles.toneRow}>
+        <Text style={styles.toneLabel}>Alert tone</Text>
+        <View style={{ flexDirection: "row", gap: spacing.sm, flex: 1, flexWrap: "wrap" }}>
+          {TONES.map((t) => (
+            <Button key={t.id} title={t.label} variant={tone === t.id ? "primary" : "secondary"} onPress={() => setTone(t.id)} />
+          ))}
+          <Button title="Test" variant="secondary" onPress={() => playTone(tone)} />
+        </View>
+      </View>
+
       <FlatList
         data={sessions ?? []}
         keyExtractor={(s) => String(s.id)}
@@ -76,17 +111,20 @@ export function ActiveSessionsScreen() {
           const elapsedSec = Math.floor(((now - new Date(item.startTime).getTime()) % 60000) / 1000);
           const isConfirming = confirmingId === item.id;
           const isPaid = item.paymentStatus === "PAID";
+          const timeUp = !!item.durationMinutes && elapsedMin >= item.durationMinutes;
           return (
-            <Card style={{ gap: spacing.sm, borderRadius: radius.lg }}>
+            <Card style={{ gap: spacing.sm, borderRadius: radius.lg, borderColor: timeUp ? colors.maintenance : colors.border }}>
               <View style={styles.card}>
                 <View style={{ flex: 1, gap: spacing.xs }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
                     <Text style={styles.stationLabel}>{item.station?.gameType?.name} · {item.station?.label}</Text>
                     {isPaid ? <Text style={styles.paidBadge}>PAID</Text> : null}
+                    {timeUp ? <Text style={styles.timeUpBadge}>TIME'S UP</Text> : null}
                   </View>
                   <Text style={styles.customerName}>{item.customer?.name}</Text>
-                  <Text style={styles.timer}>
+                  <Text style={[styles.timer, timeUp ? { color: colors.maintenance } : null]}>
                     {elapsedMin}m {elapsedSec.toString().padStart(2, "0")}s elapsed
+                    {item.durationMinutes ? ` / ${item.durationMinutes}m booked` : ""}
                   </Text>
                 </View>
                 <Button title="End" variant="danger" onPress={() => setConfirmingId(item.id)} />
@@ -134,7 +172,9 @@ export function ActiveSessionsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, padding: spacing.xl },
-  title: { ...typography.h1, color: colors.text, marginBottom: spacing.lg },
+  title: { ...typography.h1, color: colors.text, marginBottom: spacing.md },
+  toneRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.lg, flexWrap: "wrap" },
+  toneLabel: { color: colors.textDim, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
   empty: { color: colors.textDim, textAlign: "center", marginTop: spacing.xxl },
   card: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   stationLabel: { color: colors.accent, fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
@@ -144,6 +184,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     borderWidth: 1,
     borderColor: colors.available,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  timeUpBadge: {
+    color: colors.maintenance,
+    fontSize: 10,
+    fontWeight: "800",
+    borderWidth: 1,
+    borderColor: colors.maintenance,
     borderRadius: 4,
     paddingHorizontal: 5,
     paddingVertical: 1,

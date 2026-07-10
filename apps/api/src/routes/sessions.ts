@@ -64,16 +64,18 @@ function resolvePricing(
 
 export async function sessionRoutes(fastify: FastifyInstance) {
   fastify.get("/sessions", { preHandler: authenticate }, async (request) => {
-    const { date, stationId, staffId, active } = request.query as {
+    const { date, stationId, staffId, customerId, active } = request.query as {
       date?: string;
       stationId?: string;
       staffId?: string;
+      customerId?: string;
       active?: string;
     };
     return prisma.session.findMany({
       where: {
         ...(stationId ? { stationId: Number(stationId) } : {}),
         ...(staffId ? { loggedByUserId: Number(staffId) } : {}),
+        ...(customerId ? { customerId: Number(customerId) } : {}),
         ...(date ? { startTime: { gte: new Date(`${date}T00:00:00`), lt: new Date(`${date}T23:59:59`) } } : {}),
         ...(active === "true" ? { endTime: null } : {}),
       },

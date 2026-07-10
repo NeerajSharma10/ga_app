@@ -101,7 +101,9 @@ export function StartSessionScreen({ route, navigation }: Props) {
   async function ensureCustomer(): Promise<CustomerDTO> {
     if (customer) return customer;
     if (!newName.trim()) throw new Error("Enter the customer's name");
-    return api.post<CustomerDTO>("/customers", { name: newName, phone, address: newAddress || undefined });
+    const created = await api.post<CustomerDTO>("/customers", { name: newName, phone, address: newAddress || undefined });
+    queryClient.invalidateQueries({ queryKey: ["customers"] });
+    return created;
   }
 
   async function handleStart() {

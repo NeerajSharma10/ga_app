@@ -1,14 +1,18 @@
 import { useMemo, useState } from "react";
-import { View, Text, StyleSheet, FlatList } from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { CustomerDTO } from "@ga-app/shared-types";
+import type { CustomersStackParamList } from "../navigation/types";
 import { api } from "../lib/api";
 import { colors, radius, spacing, typography } from "../theme";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { TextField } from "../components/TextField";
 
-export function CustomersScreen() {
+type Props = NativeStackScreenProps<CustomersStackParamList, "Customers">;
+
+export function CustomersScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [updatingId, setUpdatingId] = useState<number | null>(null);
@@ -16,7 +20,7 @@ export function CustomersScreen() {
   const [discountInput, setDiscountInput] = useState("10");
   const [promptError, setPromptError] = useState("");
 
-  const { data: customers } = useQuery({
+  const { data: customers, refetch, isFetching } = useQuery({
     queryKey: ["customers"],
     queryFn: () => api.get<CustomerDTO[]>("/customers"),
   });
@@ -57,7 +61,10 @@ export function CustomersScreen() {
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.title}>Customers</Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={styles.title}>Customers</Text>
+        <Button title="Refresh" variant="secondary" onPress={() => refetch()} loading={isFetching} />
+      </View>
       <TextField label="Search" value={search} onChangeText={setSearch} placeholder="Name or mobile number" />
       <FlatList
         data={filtered}
@@ -66,19 +73,21 @@ export function CustomersScreen() {
         ListEmptyComponent={<Text style={styles.empty}>No customers found.</Text>}
         renderItem={({ item }) => (
           <Card style={{ gap: spacing.sm, borderRadius: radius.lg }}>
-            <View style={styles.card}>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.name}>{item.name}</Text>
-                <Text style={styles.phone}>{item.phone}</Text>
-                {item.isMember ? <Text style={styles.member}>Member · {item.memberDiscountPercent}% off</Text> : null}
+            <Pressable onPress={() => navigation.navigate("CustomerDetail", { customerId: item.id })}>
+              <View style={styles.card}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={styles.name}>{item.name}</Text>
+                  <Text style={styles.phone}>{item.phone}</Text>
+                  {item.isMember ? <Text style={styles.member}>Member · {item.memberDiscountPercent}% off</Text> : null}
+                </View>
+                <Button
+                  title={item.isMember ? "Remove" : "Make member"}
+                  variant={item.isMember ? "danger" : "secondary"}
+                  onPress={() => (item.isMember ? removeMembership(item) : setPromptForId(item.id))}
+                  loading={updatingId === item.id}
+                />
               </View>
-              <Button
-                title={item.isMember ? "Remove" : "Make member"}
-                variant={item.isMember ? "danger" : "secondary"}
-                onPress={() => (item.isMember ? removeMembership(item) : setPromptForId(item.id))}
-                loading={updatingId === item.id}
-              />
-            </View>
+            </Pressable>
             {promptForId === item.id ? (
               <View style={{ gap: spacing.sm }}>
                 <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "flex-end" }}>

@@ -43,16 +43,18 @@ export async function reportRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // One row per completed session for a given day - "which customer played
-  // which game for how much" - downloadable as a spreadsheet.
+  // One row per completed session in a date range - "which customer played
+  // which game for how much" - downloadable as a spreadsheet. Accepts either
+  // a single `date`, or a `from`/`to` range (both inclusive, by calendar day).
   fastify.get("/reports/sessions.csv", { preHandler: [authenticate, requireRole("SUPER_ADMIN")] }, async (request, reply) => {
-    const { date } = request.query as { date?: string };
-    const day = date ?? new Date().toISOString().slice(0, 10);
-    const dayStart = new Date(`${day}T00:00:00`);
-    const dayEnd = new Date(`${day}T23:59:59.999`);
+    const { date, from, to } = request.query as { date?: string; from?: string; to?: string };
+    const startDay = from ?? date ?? new Date().toISOString().slice(0, 10);
+    const endDay = to ?? date ?? startDay;
+    const rangeStart = new Date(`${startDay}T00:00:00`);
+    const rangeEnd = new Date(`${endDay}T23:59:59.999`);
 
     const sessions = await prisma.session.findMany({
-      where: { startTime: { gte: dayStart, lte: dayEnd } },
+      where: { startTime: { gte: rangeStart, lte: rangeEnd } },
       include: {
         station: { include: { gameType: true } },
         customer: true,
@@ -91,8 +93,9 @@ export async function reportRoutes(fastify: FastifyInstance) {
 
     const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\r\n");
 
+    const filenameSuffix = startDay === endDay ? startDay : `${startDay}_to_${endDay}`;
     reply.header("Content-Type", "text/csv");
-    reply.header("Content-Disposition", `attachment; filename="sessions-${day}.csv"`);
+    reply.header("Content-Disposition", `attachment; filename="sessions-${filenameSuffix}.csv"`);
     return reply.send(csv);
   });
 }

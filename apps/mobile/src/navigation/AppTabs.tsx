@@ -13,6 +13,7 @@ import { StartSessionScreen } from "../screens/StartSessionScreen";
 import { ActiveSessionsScreen } from "../screens/ActiveSessionsScreen";
 import { SessionHistoryScreen } from "../screens/SessionHistoryScreen";
 import { CustomersScreen } from "../screens/CustomersScreen";
+import { CustomerDetailScreen } from "../screens/CustomerDetailScreen";
 import { AdminMenuScreen } from "../screens/AdminMenuScreen";
 import { ReportsScreen } from "../screens/ReportsScreen";
 import { ManageStationsScreen } from "../screens/ManageStationsScreen";
@@ -62,6 +63,7 @@ function CustomersStackScreen() {
   return (
     <CustomersStack.Navigator screenOptions={screenOptions}>
       <CustomersStack.Screen name="Customers" component={CustomersScreen} options={{ headerShown: false }} />
+      <CustomersStack.Screen name="CustomerDetail" component={CustomerDetailScreen} options={{ title: "Customer" }} />
     </CustomersStack.Navigator>
   );
 }
