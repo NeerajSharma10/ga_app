@@ -94,6 +94,7 @@ model Station {
   gameTypeId Int
   gameType   GameType      @relation(fields: [gameTypeId], references: [id])
   status     StationStatus @default(AVAILABLE)
+  active     Boolean       @default(true) // soft delete - sessions keep referencing this row
   sessions   Session[]
 
   @@index([gameTypeId])

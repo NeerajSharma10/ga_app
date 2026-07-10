@@ -18,6 +18,15 @@ export function ManageStationsScreen() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const [newGameName, setNewGameName] = useState("");
+  const [newGameCategory, setNewGameCategory] = useState<GameCategory>("CONSOLE");
+  const [addingGame, setAddingGame] = useState(false);
+  const [addGameError, setAddGameError] = useState("");
+
+  const [stationErrors, setStationErrors] = useState<Record<number, string>>({});
+  const [confirmingDeleteStation, setConfirmingDeleteStation] = useState<number | null>(null);
+  const [deletingStation, setDeletingStation] = useState<number | null>(null);
+
   const { data: gameTypes } = useQuery({
     queryKey: ["game-types"],
     queryFn: () => api.get<GameTypeDTO[]>("/game-types"),
@@ -44,14 +53,63 @@ export function ManageStationsScreen() {
     }
   }
 
+  async function addGame() {
+    setAddGameError("");
+    if (!newGameName.trim()) return setAddGameError("Enter a game name");
+
+    setAddingGame(true);
+    try {
+      await api.post("/game-types", { name: newGameName.trim(), category: newGameCategory });
+      setNewGameName("");
+      queryClient.invalidateQueries({ queryKey: ["game-types"] });
+    } catch (err) {
+      setAddGameError(err instanceof ApiError ? err.message : "Could not add game");
+    } finally {
+      setAddingGame(false);
+    }
+  }
+
   async function setStatus(station: StationDTO, status: StationStatus) {
     await api.put(`/stations/${station.id}`, { status });
     queryClient.invalidateQueries({ queryKey: ["stations"] });
   }
 
+  async function deleteStation(station: StationDTO) {
+    setStationErrors((prev) => ({ ...prev, [station.id]: "" }));
+    setDeletingStation(station.id);
+    try {
+      await api.delete(`/stations/${station.id}`);
+      queryClient.invalidateQueries({ queryKey: ["stations"] });
+      setConfirmingDeleteStation(null);
+    } catch (err) {
+      setStationErrors((prev) => ({
+        ...prev,
+        [station.id]: err instanceof ApiError ? err.message : "Could not delete station",
+      }));
+    } finally {
+      setDeletingStation(null);
+    }
+  }
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ gap: spacing.lg, paddingBottom: spacing.xxl }}>
       <Text style={styles.title}>Stations & games</Text>
+
+      <Card style={{ gap: spacing.md }}>
+        <Text style={styles.sectionTitle}>Add game</Text>
+        <TextField label="Game name" value={newGameName} onChangeText={setNewGameName} placeholder="e.g. Table Tennis" />
+        <View style={{ gap: spacing.xs }}>
+          <Text style={styles.fieldLabel}>Category</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
+            {CATEGORIES.map((c) => (
+              <Button key={c} title={c} variant={newGameCategory === c ? "primary" : "secondary"} onPress={() => setNewGameCategory(c)} />
+            ))}
+          </View>
+        </View>
+        {addGameError ? <Text style={styles.error}>{addGameError}</Text> : null}
+        <Button title="Add game" onPress={addGame} loading={addingGame} />
+        <Text style={styles.hint}>Add pricing for it below once created.</Text>
+      </Card>
 
       <Card style={{ gap: spacing.md }}>
         <Text style={styles.sectionTitle}>Add station</Text>
@@ -73,16 +131,29 @@ export function ManageStationsScreen() {
       <Card style={{ gap: spacing.md }}>
         <Text style={styles.sectionTitle}>Stations</Text>
         {stations?.map((s) => (
-          <View key={s.id} style={styles.stationRow}>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.stationLabel}>{s.gameType?.name} · {s.label}</Text>
-              <StatusPill status={s.status} />
+          <View key={s.id} style={{ gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.stationLabel}>{s.gameType?.name} · {s.label}</Text>
+                <StatusPill status={s.status} />
+              </View>
+              <Button
+                title={s.status === "MAINTENANCE" ? "Mark available" : "Mark maintenance"}
+                variant="secondary"
+                onPress={() => setStatus(s, s.status === "MAINTENANCE" ? "AVAILABLE" : "MAINTENANCE")}
+              />
+              <Button title="Delete" variant="danger" onPress={() => setConfirmingDeleteStation(s.id)} />
             </View>
-            <Button
-              title={s.status === "MAINTENANCE" ? "Mark available" : "Mark maintenance"}
-              variant="secondary"
-              onPress={() => setStatus(s, s.status === "MAINTENANCE" ? "AVAILABLE" : "MAINTENANCE")}
-            />
+            {confirmingDeleteStation === s.id ? (
+              <View style={styles.confirmBox}>
+                <Text style={styles.confirmText}>Delete "{s.label}"? Past sessions on it stay on record.</Text>
+                <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                  <Button title="Yes, delete" variant="danger" onPress={() => deleteStation(s)} loading={deletingStation === s.id} style={{ flex: 1 }} />
+                  <Button title="Cancel" variant="secondary" onPress={() => setConfirmingDeleteStation(null)} style={{ flex: 1 }} />
+                </View>
+                {stationErrors[s.id] ? <Text style={styles.error}>{stationErrors[s.id]}</Text> : null}
+              </View>
+            ) : null}
           </View>
         ))}
       </Card>
@@ -286,4 +357,5 @@ const styles = StyleSheet.create({
   editRow: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-end" },
   confirmBox: { gap: spacing.sm, backgroundColor: `${colors.maintenance}15`, borderColor: colors.maintenance, borderWidth: 1, borderRadius: 10, padding: spacing.md },
   confirmText: { color: colors.text, fontSize: 13, lineHeight: 18 },
+  hint: { color: colors.textDim, fontSize: 12 },
 });
