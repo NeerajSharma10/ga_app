@@ -13,6 +13,7 @@ const stationSchema = z.object({
 export async function stationRoutes(fastify: FastifyInstance) {
   fastify.get("/stations", { preHandler: authenticate }, async () => {
     return prisma.station.findMany({
+      where: { gameType: { active: true } },
       include: { gameType: { include: { priceTiers: true, coinPackages: true } } },
       orderBy: { label: "asc" },
     });

@@ -54,4 +54,17 @@ export async function gameTypeRoutes(fastify: FastifyInstance) {
     });
     return reply.send(gameType);
   });
+
+  // Soft delete - a hard delete would break the foreign key from any
+  // stations (and, through them, historical sessions/receipts) that still
+  // reference this game type. Marking it inactive hides it from staff
+  // without touching existing data.
+  fastify.delete("/game-types/:id", { preHandler: [authenticate, requireRole("SUPER_ADMIN")] }, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const gameType = await prisma.gameType.findUnique({ where: { id } });
+    if (!gameType) return reply.code(404).send({ error: "Game not found" });
+
+    await prisma.gameType.update({ where: { id }, data: { active: false } });
+    return reply.code(204).send();
+  });
 }
